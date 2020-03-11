@@ -1,6 +1,6 @@
 ﻿using Unity.Entities;
 [GenerateAuthoringComponent]
-public struct IntegerStruct : IComponentData
+public struct IntegerComponent : IComponentData
 {
     public int value;
 }

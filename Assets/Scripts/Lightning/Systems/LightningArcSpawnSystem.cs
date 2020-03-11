@@ -8,10 +8,19 @@ using System;
 public class LightningArcSpawnSystem : JobComponentSystem
 {
     private EndSimulationEntityCommandBufferSystem endSimulationEntityCommandBufferSystem;
+    private EntityArchetype lightningEntityArchtype;
+    /* private Entity lightningMaterial = GameObjectConversionUtility. */
 
     protected override void OnCreate()
     {
         endSimulationEntityCommandBufferSystem = World.GetOrCreateSystem<EndSimulationEntityCommandBufferSystem>();
+
+        lightningEntityArchtype = EntityManager.CreateArchetype(
+            typeof(Translation),
+            typeof(LightningArcEntity),
+            typeof(LightningArcTipComponent),
+            typeof(DeathComponent)
+        );
     }
 
     private Unity.Mathematics.Random randomIntGenerator = new Unity.Mathematics.Random();
@@ -22,9 +31,7 @@ public class LightningArcSpawnSystem : JobComponentSystem
     {
         EntityCommandBuffer entityCommandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer();
         EntityCommandBuffer.Concurrent entityCommandBufferConcurrent = entityCommandBuffer.ToConcurrent();
-        EntityArchetype eventEntityArchtype = EntityManager.CreateArchetype(
-            typeof(SpawnEventComponent)
-        );
+
 
         float rndWaitTime = (float)Time.ElapsedTime + randomIntGenerator.NextInt(minSpawnWait, maxSpawnWait); //will be same for all current entities
         int rndNumberOfSpawns = randomIntGenerator.NextInt(0, 4); //will be same for all current entities
@@ -35,13 +42,17 @@ public class LightningArcSpawnSystem : JobComponentSystem
             if (spawnComponent.timeUntilNextSpawn <= Time.ElapsedTime)
             {
                 spawnComponent.timeUntilNextSpawn = rndWaitTime;
-                Entity eventEntity = entityCommandBufferConcurrent.CreateEntity(entityInQueryIndex, eventEntityArchtype);
-                entityCommandBufferConcurrent.SetComponent(entityInQueryIndex, eventEntity,
-                    new SpawnEventComponent
+                Entity lightningEntity = entityCommandBufferConcurrent.CreateEntity(entityInQueryIndex, lightningEntityArchtype);
+                entityCommandBufferConcurrent.SetComponent(entityInQueryIndex, lightningEntity,
+                    new Translation
                     {
-                        position = new float3(position.Value),
-                        numberOfSpawns = rndNumberOfSpawns,
-                        prefabToSpawn = spawnComponent.lightningArcPrefab
+                        Value = new float3(position.Value)
+                    }
+                );
+                entityCommandBufferConcurrent.SetComponent(entityInQueryIndex, lightningEntity,
+                    new LightningArcEntity
+                    {
+                        lineRenderer = new UnityEngine.LineRenderer()
                     }
                 );
             }
