@@ -1,0 +1,24 @@
+﻿using UnityEngine;
+
+public class LightningSpawn : MonoBehaviour
+{
+    private GameObject lightningArc;
+    private float timeUntilNextSpawn;
+    // Start is called before the first frame update
+    void Start()
+    {
+        lightningArc = Resources.Load<GameObject>("Lightning VFX/LightningArc");
+        timeUntilNextSpawn = 0;
+    }
+
+    // Update is called once per frame
+    void Update()
+    {
+        if (timeUntilNextSpawn < Time.time)
+        {
+            GameObject arc = Instantiate(lightningArc, transform.position, Quaternion.identity);
+            arc.transform.parent = gameObject.transform;
+            timeUntilNextSpawn = Time.time + Random.Range(0, 5);
+        }
+    }
+}
