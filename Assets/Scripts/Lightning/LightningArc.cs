@@ -22,6 +22,10 @@ public class LightningArc : MonoBehaviour
         }
     }
 
+    public float MaxRadius { get { return subemitter ? maxRadius / 2 : maxRadius; } set => maxRadius = value; }
+
+    public Unity.Mathematics.Random RandomGenerator { get => randomGenerator; set => randomGenerator = value; }
+
     [SerializeField]
     private Material lightningArcMaterial;
     private LineRenderer lineRenderer;
@@ -31,12 +35,14 @@ public class LightningArc : MonoBehaviour
     [SerializeField]
     private float maxRadius = 10f;
     private float startWidth = .2f;
+    private Unity.Mathematics.Random randomGenerator;
     private Plane constraintPlane;
     private int nextSegmentCounter;
     private float timeUntilDeath;
     private GameObject lightningArcTip;
     private LightningTip tip;
     private bool subemitter = false;
+    private bool hasForked = false;
 
 
 
@@ -45,6 +51,7 @@ public class LightningArc : MonoBehaviour
     {
         lineRenderer = gameObject.AddComponent<LineRenderer>();
         lightningArcTip = new GameObject();
+        lightningArcTip.transform.parent = transform;
         tip = lightningArcTip.AddComponent<LightningTip>();
         tip.OnCollisionDetected += createCollision;
 
@@ -62,7 +69,8 @@ public class LightningArc : MonoBehaviour
         setRandomDestination();
         lineRenderer.material = lightningArcMaterial;
         lineRenderer.endWidth = 0;
-        lineRenderer.startWidth = startWidth;
+        if (subemitter) lineRenderer.startWidth = startWidth / 2;
+        else lineRenderer.startWidth = startWidth;
         lineRenderer.numCapVertices = 3;
     }
 
@@ -72,8 +80,8 @@ public class LightningArc : MonoBehaviour
         lineRenderer.positionCount++;
 
         Vector3 nextPosition = addNoiseToArc() + lineRenderer.GetPosition(nextSegmentCounter - 1);
+        tip.TipPosition = nextPosition;
         lineRenderer.SetPosition(nextSegmentCounter, nextPosition);
-        tip.rb.MovePosition(nextPosition);
     }
 
     private Vector3 addNoiseToArc()
@@ -92,14 +100,14 @@ public class LightningArc : MonoBehaviour
     }
 
     ///<summary>
-    ///Create a random destiantion with a maximum distance away from <see cref="origin"/>: sqrt(3*(pow(<see cref="maxRadius"/>, 2)))
+    ///Create a random destiantion with a maximum distance away from <see cref="origin"/>: sqrt(3*(pow(<see cref="MaxRadius"/>, 2)))
     ///</summary>
     private void setRandomDestination(bool constraint = false)
     {
 
-        destination = new Vector3(UnityEngine.Random.Range(-maxRadius, maxRadius),
-                                 UnityEngine.Random.Range(-maxRadius, maxRadius),
-                                 UnityEngine.Random.Range(-maxRadius, maxRadius));
+        destination = new Vector3(UnityEngine.Random.Range(-MaxRadius, MaxRadius),
+                                 UnityEngine.Random.Range(-MaxRadius, MaxRadius),
+                                 UnityEngine.Random.Range(-MaxRadius, MaxRadius));
         if (constraint)
         {
             if (!constraintPlane.GetSide(destination)) setRandomDestination(true);
@@ -109,6 +117,16 @@ public class LightningArc : MonoBehaviour
     private void FixedUpdate()
     {
         addArcSegment();
+        if (!hasForked) forkLightning();
+    }
+
+    private void forkLightning()
+    {
+        if (randomGenerator.NextInt(0, 10) < 6)
+        {
+            hasForked = true;
+            createSubEmitters(tip.TipPosition);
+        }
     }
 
     private void createCollision(object sender, LightningTip.OnCollisionDetectedEventArgs e)
@@ -136,7 +154,7 @@ public class LightningArc : MonoBehaviour
         impact.AddComponent<LightningImpact>();
     }
 
-    private void createSubEmitters(Vector3 origin, Vector3 originNormal)
+    private void createSubEmitters(Vector3 origin, Vector3 originNormal = new Vector3())
     {
         // randomly deciding on number of subemitters
         int numberOfSubEmitters = UnityEngine.Random.Range(0, 5);
@@ -145,11 +163,16 @@ public class LightningArc : MonoBehaviour
         for (int i = 0; i < numberOfSubEmitters; i++)
         {
             GameObject subArc = Instantiate(arc, origin + originNormal.normalized * 2, Quaternion.identity);
+            subArc.transform.parent = transform;
             LightningArc lightning = subArc.GetComponent<LightningArc>();
             lightning.subemitter = true;
-            lightning.constraintPlane = new Plane();
-            lightning.constraintPlane.SetNormalAndPosition(originNormal, origin);
-            lightning.startWidth = .1f;
+            lightning.hasForked = hasForked;
+            if (originNormal != Vector3.zero)
+            {
+                lightning.constraintPlane = new Plane();
+                lightning.constraintPlane.SetNormalAndPosition(originNormal, origin);
+                lightning.startWidth = .1f;
+            }
         }
     }
 
