@@ -36,6 +36,7 @@ public class LightningArc : MonoBehaviour
     private float timeUntilDeath;
     private GameObject lightningArcTip;
     private LightningTip tip;
+    private bool subemitter = false;
 
 
 
@@ -119,7 +120,7 @@ public class LightningArc : MonoBehaviour
                    arcDirection = dirToDest;
 
             createImpactPoint(e.collision.point);
-            createSubEmitters(e.collision.point, e.collision.normal);
+            if (!subemitter) createSubEmitters(e.collision.point, e.collision.normal);
 
             gameObject.SetActive(false);
             Destroy(lightningArcTip);
@@ -145,6 +146,7 @@ public class LightningArc : MonoBehaviour
         {
             GameObject subArc = Instantiate(arc, origin + originNormal.normalized * 2, Quaternion.identity);
             LightningArc lightning = subArc.GetComponent<LightningArc>();
+            lightning.subemitter = true;
             lightning.constraintPlane = new Plane();
             lightning.constraintPlane.SetNormalAndPosition(originNormal, origin);
             lightning.startWidth = .1f;
