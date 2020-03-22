@@ -11,11 +11,12 @@ public class LightningSpawn : MonoBehaviour
         timeUntilNextSpawn = 0;
     }
 
-    // Update is called once per frame
-    void Update()
+    private void Update()
     {
+        Debug.Log("update");
         if (timeUntilNextSpawn < Time.time)
         {
+            Debug.Log("instantiating lightning");
             GameObject arc = Instantiate(lightningArc, transform.position, Quaternion.identity);
             arc.transform.parent = gameObject.transform;
             timeUntilNextSpawn = Time.time + Random.Range(0, 5);
