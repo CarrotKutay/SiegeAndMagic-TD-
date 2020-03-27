@@ -20,6 +20,8 @@ public class LightningSpawn : MonoBehaviour
             GameObject arc = Instantiate(lightningArc, transform.position, Quaternion.identity);
             arc.GetComponent<LightningArc>().RandomGenerator = new Unity.Mathematics.Random(randomGenerator.NextUInt());
             arc.transform.parent = gameObject.transform;
+            arc.GetComponent<LightningArc>().Origin = transform.position;
+
             timeUntilNextSpawn = Time.time + Random.Range(0, 5);
         }
     }

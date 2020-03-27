@@ -1,9 +1,16 @@
 ﻿using UnityEngine;
+using Unity.Collections;
+using Unity.Jobs;
+using System;
+using System.Collections.Generic;
+using Unity.Mathematics;
 
 public class LightningArc : MonoBehaviour
 {
+    [SerializeField]
+    private float lightningDelay = 1f;
     ///<summary>
-    /// <see cref="origin"/> is the starting point of the lightning arc to be created. By default set to (0, 0, 0)
+    /// <see cref="Origin"/> is the starting point of the lightning arc to be created. By default set to (0, 0, 0)
     ///</summary>
     private Vector3 origin;
     ///<summary>
@@ -17,18 +24,18 @@ public class LightningArc : MonoBehaviour
     {
         get
         {
-            if (nextSegmentCounter <= 1) return (destination - origin).normalized;
+            if (nextSegmentCounter <= 1) return (destination - Origin).normalized;
             return (destination - lineRenderer.GetPosition(nextSegmentCounter)).normalized;
         }
     }
 
     public float MaxRadius { get { return subemitter ? maxRadius / 2 : maxRadius; } set => maxRadius = value; }
-
     public Unity.Mathematics.Random RandomGenerator { get => randomGenerator; set => randomGenerator = value; }
-
+    public Vector3 Origin { get => origin; set => origin = value; }
     [SerializeField]
     private Material lightningArcMaterial;
     private LineRenderer lineRenderer;
+    private List<LightningData> lightningDataList;
     ///<summary>
     /// Maximum distance from origin for any arc that a lightning arc is able to reach
     ///</summary>
@@ -38,12 +45,14 @@ public class LightningArc : MonoBehaviour
     private Unity.Mathematics.Random randomGenerator;
     private Plane constraintPlane;
     private int nextSegmentCounter;
+    [SerializeField]
     private float timeUntilDeath;
     private GameObject lightningArcTip;
     private LightningTip tip;
     private bool subemitter = false;
     private bool hasForked = false;
-
+    [SerializeField]
+    private bool hasCollided = false;
 
 
     // Start is called before the first frame update
@@ -58,14 +67,13 @@ public class LightningArc : MonoBehaviour
         nextSegmentCounter = 0;
         setupLightningArc();
         timeUntilDeath = UnityEngine.Random.Range(.3f, .8f);
-        Destroy(gameObject, timeUntilDeath);
     }
 
     private void setupLightningArc()
     {
-        origin = transform.position;
+        Origin = transform.position;
         lineRenderer.positionCount = 1;
-        lineRenderer.SetPosition(0, origin); // setting start position
+        lineRenderer.SetPosition(0, Origin); // setting start position
         setRandomDestination();
         lineRenderer.material = lightningArcMaterial;
         lineRenderer.endWidth = 0;
@@ -76,12 +84,15 @@ public class LightningArc : MonoBehaviour
 
     private void addArcSegment()
     {
-        nextSegmentCounter++;
-        lineRenderer.positionCount++;
+        if (!hasCollided)
+        {
+            nextSegmentCounter++;
+            lineRenderer.positionCount++;
 
-        Vector3 nextPosition = addNoiseToArc() + lineRenderer.GetPosition(nextSegmentCounter - 1);
-        tip.TipPosition = nextPosition;
-        lineRenderer.SetPosition(nextSegmentCounter, nextPosition);
+            Vector3 nextPosition = addNoiseToArc() + lineRenderer.GetPosition(nextSegmentCounter - 1);
+            tip.TipPosition = nextPosition;
+            lineRenderer.SetPosition(nextSegmentCounter, nextPosition);
+        }
     }
 
     private Vector3 addNoiseToArc()
@@ -100,7 +111,7 @@ public class LightningArc : MonoBehaviour
     }
 
     ///<summary>
-    ///Create a random destiantion with a maximum distance away from <see cref="origin"/>: sqrt(3*(pow(<see cref="MaxRadius"/>, 2)))
+    ///Create a random destiantion with a maximum distance away from <see cref="Origin"/>: sqrt(3*(pow(<see cref="MaxRadius"/>, 2)))
     ///</summary>
     private void setRandomDestination(bool constraint = false)
     {
@@ -116,8 +127,17 @@ public class LightningArc : MonoBehaviour
 
     private void FixedUpdate()
     {
+        updateTime();
         addArcSegment();
+
         if (!hasForked) forkLightning();
+        if (timeUntilDeath <= 0) Destroy(gameObject);
+        if (lightningDataList != null) moveLightningPositions();
+    }
+
+    private void updateTime()
+    {
+        timeUntilDeath -= Time.deltaTime;
     }
 
     private void forkLightning()
@@ -134,17 +154,60 @@ public class LightningArc : MonoBehaviour
         tip.OnCollisionDetected -= createCollision;
         if (sender == lightningArcTip as object)
         {
+            hasCollided = true;
             Vector3 arcPosition = lineRenderer.GetPosition(nextSegmentCounter),
                    arcDirection = dirToDest;
 
             createImpactPoint(e.collision.point);
-            if (!subemitter) createSubEmitters(e.collision.point, e.collision.normal);
-
-            gameObject.SetActive(false);
-            Destroy(lightningArcTip);
-            Destroy(gameObject, .3f);
+            if (!subemitter) createSubEmitters(new Vector3(tip.TipPosition.x, tip.TipPosition.y, tip.TipPosition.z), e.collision.normal);
+            else if (lineRenderer.positionCount <= 2) Destroy(gameObject);
         }
 
+        spreadLightningPositions();
+    }
+
+    private void cleanUp()
+    {
+        Destroy(gameObject);
+    }
+
+    private void spreadLightningPositions()
+    {
+        if (hasCollided && lineRenderer.positionCount > 2)
+        {
+            timeUntilDeath += lightningDelay;
+            NativeList<LightningData> lightningData = new NativeList<LightningData>(lineRenderer.positionCount, Allocator.TempJob);
+
+            LightningPhysics physicsJob = new LightningPhysics()
+            {
+                dataList = lightningData.AsParallelWriter(),
+                numberOfPositions = lineRenderer.positionCount,
+                peak = (int)(lineRenderer.positionCount / 2),
+                gravityFloatingMultiplier = 3f,
+                gravityFloatingDirection = Vector3.up
+            };
+
+            JobHandle physicsJobHandle = physicsJob.Schedule(lineRenderer.positionCount, 32);
+            physicsJobHandle.Complete();
+            lightningDataList = new List<LightningData>(lightningData.ToArray());
+
+            lightningData.Dispose();
+        }
+    }
+
+    private void moveLightningPositions()
+    {
+        foreach (var item in lightningDataList)
+        {
+            Vector3 position = lineRenderer.GetPosition(item.index);
+            Vector3 direction = item.direction;
+            if (timeUntilDeath > 0)
+            {
+                position += (direction - position) * Time.deltaTime;
+                lineRenderer.SetPosition(item.index, position);
+                timeUntilDeath -= Time.deltaTime;
+            }
+        }
     }
 
     private void createImpactPoint(Vector3 position)
@@ -162,11 +225,12 @@ public class LightningArc : MonoBehaviour
 
         for (int i = 0; i < numberOfSubEmitters; i++)
         {
-            GameObject subArc = Instantiate(arc, origin + originNormal.normalized * 2, Quaternion.identity);
-            subArc.transform.parent = transform;
+            GameObject subArc = Instantiate(arc, origin, Quaternion.identity);
+            //subArc.transform.parent = transform;
             LightningArc lightning = subArc.GetComponent<LightningArc>();
             lightning.subemitter = true;
             lightning.hasForked = hasForked;
+            lightning.randomGenerator = new Unity.Mathematics.Random(randomGenerator.NextUInt());
             if (originNormal != Vector3.zero)
             {
                 lightning.constraintPlane = new Plane();
