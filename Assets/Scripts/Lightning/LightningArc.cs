@@ -1,9 +1,7 @@
 ﻿using UnityEngine;
 using Unity.Collections;
 using Unity.Jobs;
-using System;
 using System.Collections.Generic;
-using Unity.Mathematics;
 
 public class LightningArc : MonoBehaviour
 {
@@ -41,6 +39,7 @@ public class LightningArc : MonoBehaviour
     ///</summary>
     [SerializeField]
     private float maxRadius = 10f;
+    [SerializeField]
     private float startWidth = .2f;
     private Unity.Mathematics.Random randomGenerator;
     private Plane constraintPlane;
@@ -49,7 +48,9 @@ public class LightningArc : MonoBehaviour
     private float timeUntilDeath;
     private GameObject lightningArcTip;
     private LightningTip tip;
+    [SerializeField]
     private bool subemitter = false;
+    [SerializeField]
     private bool hasForked = false;
     [SerializeField]
     private bool hasCollided = false;
@@ -69,6 +70,7 @@ public class LightningArc : MonoBehaviour
         timeUntilDeath = UnityEngine.Random.Range(.3f, .8f);
     }
 
+    // setup line renderer
     private void setupLightningArc()
     {
         Origin = transform.position;
@@ -82,6 +84,7 @@ public class LightningArc : MonoBehaviour
         lineRenderer.numCapVertices = 3;
     }
 
+    // adding new positions to line renderer to extend the lightning
     private void addArcSegment()
     {
         if (!hasCollided)
@@ -95,6 +98,7 @@ public class LightningArc : MonoBehaviour
         }
     }
 
+    // adding noise to the lightning (instead of straight line)
     private Vector3 addNoiseToArc()
     {
         float x_multiplier = UnityEngine.Random.Range(0, 1f);
@@ -125,30 +129,38 @@ public class LightningArc : MonoBehaviour
         }
     }
 
+    // using fixed update as we are handling collisions 
+    // and are therefore including physics behaviour to be
+    // considered
     private void FixedUpdate()
     {
         updateTime();
         addArcSegment();
 
-        if (!hasForked) forkLightning();
-        if (timeUntilDeath <= 0) Destroy(gameObject);
-        if (lightningDataList != null) moveLightningPositions();
+        if (!hasForked) forkLightning(); // lightning won't fork if it has forked before
+        if (timeUntilDeath <= 0) Destroy(gameObject); // lightning will be destroyed automatically if timeOfDeath is reached
+        if (lightningDataList != null) moveLightningPositions(); // spread lightning 
     }
 
+    // update time left lightning to be alive
     private void updateTime()
     {
         timeUntilDeath -= Time.deltaTime;
     }
 
+    // forking lightning at lightning tip (40% chance at each frame of it happening)
     private void forkLightning()
     {
-        if (randomGenerator.NextInt(0, 10) < 6)
+        if (randomGenerator.NextInt(0, 10) > 5)
         {
             hasForked = true;
             createSubEmitters(tip.TipPosition);
         }
     }
 
+    // handling of collision of lightning with objects
+    // ! right now it does not recognize all collisions as the 
+    // ! lightning is moving to fast for the phsics calculations
     private void createCollision(object sender, LightningTip.OnCollisionDetectedEventArgs e)
     {
         tip.OnCollisionDetected -= createCollision;
@@ -166,11 +178,9 @@ public class LightningArc : MonoBehaviour
         spreadLightningPositions();
     }
 
-    private void cleanUp()
-    {
-        Destroy(gameObject);
-    }
-
+    // method to imitate 'lightning gravity' of it spreading and
+    // lingering after hitting and colliding with another object
+    // uses a a parallel job (multithreading)
     private void spreadLightningPositions()
     {
         if (hasCollided && lineRenderer.positionCount > 2)
@@ -195,6 +205,8 @@ public class LightningArc : MonoBehaviour
         }
     }
 
+    // move all lightning positions according to values calculated in the
+    // multithreaded job to perform 'lightning physics'
     private void moveLightningPositions()
     {
         foreach (var item in lightningDataList)
@@ -210,6 +222,7 @@ public class LightningArc : MonoBehaviour
         }
     }
 
+    // create an impact point at the surface hit upon collision
     private void createImpactPoint(Vector3 position)
     {
         GameObject impact = GameObject.CreatePrimitive(PrimitiveType.Quad);
@@ -217,6 +230,10 @@ public class LightningArc : MonoBehaviour
         impact.AddComponent<LightningImpact>();
     }
 
+    // creating subemitters either due to collision or simply 
+    // as a fork of this lightning
+    // ? right now time of death of subemitters is not tied to there parent
+    // ? lightning which emitted them -> should be changed?
     private void createSubEmitters(Vector3 origin, Vector3 originNormal = new Vector3())
     {
         // randomly deciding on number of subemitters
