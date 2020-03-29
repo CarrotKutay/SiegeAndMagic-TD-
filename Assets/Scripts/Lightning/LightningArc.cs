@@ -13,7 +13,7 @@ public class LightningArc : MonoBehaviour
     private Vector3 origin;
     ///<summary>
     /// <see cref="destination"/> is the end-point of the arc to be created
-    ///</summary>
+    ///</summary
     private Vector3 destination;
     ///<summary>
     /// The direction from the current position of the <see cref="LightningArc"/> to the <see cref="destination"/>
@@ -238,7 +238,7 @@ public class LightningArc : MonoBehaviour
     {
         // randomly deciding on number of subemitters
         int numberOfSubEmitters = UnityEngine.Random.Range(0, 5);
-        GameObject arc = Resources.Load<GameObject>("Lightning VFX/LightningArc");
+        GameObject arc = Resources.Load<GameObject>("Effects/Lightning VFX/LightningArc");
 
         for (int i = 0; i < numberOfSubEmitters; i++)
         {

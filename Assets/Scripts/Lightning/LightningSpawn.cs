@@ -8,7 +8,7 @@ public class LightningSpawn : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
-        lightningArc = Resources.Load<GameObject>("Lightning VFX/LightningArc");
+        lightningArc = Resources.Load<GameObject>("Effects/Lightning VFX/LightningArc");
         timeUntilNextSpawn = 0;
         randomGenerator = new Unity.Mathematics.Random((uint)0xfffff);
     }
