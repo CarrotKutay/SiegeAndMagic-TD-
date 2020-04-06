@@ -1,7 +1,6 @@
 ﻿using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Transforms;
-using Unity.Collections;
 using UnityEngine;
 
 public class TestGrid : MonoBehaviour
@@ -11,12 +10,15 @@ public class TestGrid : MonoBehaviour
     [SerializeField]
     private int testHeight = 50;
     private EntityManager manager;
-    private EntityArchetype gridArchetype;
+    private EntityArchetype nodeArchetype;
 
     // Start is called before the first frame update
     void Start()
     {
         manager = World.DefaultGameObjectInjectionWorld.EntityManager;
+        nodeArchetype = manager.CreateArchetype(
+            typeof(Node)
+        );
 
         Entity grid = manager.CreateEntity();
         manager.SetName(grid, "GridTest");
@@ -36,22 +38,16 @@ public class TestGrid : MonoBehaviour
                 CellSize = 1
             }
         );
-        manager.AddBuffer<CellData>(grid);
 
-        OnGridEntityCreated(grid);
-    }
+        // initialize tags
+        manager.AddComponent(grid,
+            typeof(InitializeGridTag)
+        );
+        manager.SetComponentData(grid,
+            new InitializeGridTag() { Value = true }
+        );
 
-    private void OnGridEntityCreated(Entity grid)
-    {
-        for (int y = 0; y < testHeight; y++)
-        {
-            for (int x = 0; x < testWidth; x++)
-            {
-                manager.GetBuffer<CellData>(grid).Add(new CellData()
-                {
-                    Walkable = false
-                });
-            }
-        }
+        // add buffer for nodes
+        manager.AddBuffer<NodeElement>(grid).ResizeUninitialized(testHeight * testWidth);
     }
 }
