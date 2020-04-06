@@ -1,9 +1,7 @@
 ﻿using Unity.Entities;
 using Unity.Transforms;
 using Unity.Mathematics;
-using Unity.Collections;
 using Unity.Jobs;
-using UnityEngine;
 
 public class InitializeGrid : SystemBase
 {
@@ -46,7 +44,7 @@ public class InitializeGrid : SystemBase
                                 Position = new Translation()
                                 {
                                     Value = gridPosition
-                                            + new float3(0, 0, data.CellSize) * y
+                                            + new float3(0, 0, data.CellSize * y)
                                             + new float3(data.CellSize * x, 0, 0)
                                 },
                                 Walkable = true

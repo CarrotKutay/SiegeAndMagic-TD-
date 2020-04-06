@@ -9,16 +9,19 @@ public class TestGrid : MonoBehaviour
     private int testWidth = 50;
     [SerializeField]
     private int testHeight = 50;
+    [SerializeField]
+    private float testCellSize = 1;
     private EntityManager manager;
-    private EntityArchetype nodeArchetype;
+
+    private void Awake()
+    {
+        GridGlobals.UpdateGridGlobals(testWidth, testHeight, testCellSize);
+    }
 
     // Start is called before the first frame update
     void Start()
     {
         manager = World.DefaultGameObjectInjectionWorld.EntityManager;
-        nodeArchetype = manager.CreateArchetype(
-            typeof(Node)
-        );
 
         Entity grid = manager.CreateEntity();
         manager.SetName(grid, "GridTest");
@@ -27,15 +30,19 @@ public class TestGrid : MonoBehaviour
         manager.SetComponentData(grid,
             new Translation()
             {
-                Value = new float3(0, 0, 0)
+                Value = new float3(
+                    transform.position.x - GridGlobals.getGlobalGridWidth() / 2,
+                    transform.position.y,
+                    transform.position.z - GridGlobals.getGlobalGridHeight() / 2
+                )
             }
         );
         manager.SetComponentData(grid,
             new GridData()
             {
-                Width = testWidth,
-                Height = testHeight,
-                CellSize = 1
+                Width = GridGlobals.getGlobalGridWidth(),
+                Height = GridGlobals.getGlobalGridHeight(),
+                CellSize = GridGlobals.getGlobalGridCellSize()
             }
         );
 
@@ -48,6 +55,6 @@ public class TestGrid : MonoBehaviour
         );
 
         // add buffer for nodes
-        manager.AddBuffer<NodeElement>(grid).ResizeUninitialized(testHeight * testWidth);
+        manager.AddBuffer<NodeElement>(grid).ResizeUninitialized(GridGlobals.getGlobalGridHeight() * GridGlobals.getGlobalGridWidth());
     }
 }
