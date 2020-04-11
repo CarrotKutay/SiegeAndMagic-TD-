@@ -1,12 +1,12 @@
 ﻿using Unity.Entities;
-using Unity.Transforms;
+using Unity.Mathematics;
 
 public struct Node : IComponentData
 {
     public PathfindingSystem.PathNode Value;
 }
 
-public struct NodeElement : IBufferElementData
+public struct PathElement : IBufferElementData
 {
-    public Entity Node;
+    public float3 Position;
 }

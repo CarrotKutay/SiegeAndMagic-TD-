@@ -40,6 +40,7 @@ public class TestGrid : MonoBehaviour
         manager.SetComponentData(grid,
             new GridData()
             {
+                GridIndex = 0,
                 Width = GridGlobals.getGlobalGridWidth(),
                 Height = GridGlobals.getGlobalGridHeight(),
                 CellSize = GridGlobals.getGlobalGridCellSize()
