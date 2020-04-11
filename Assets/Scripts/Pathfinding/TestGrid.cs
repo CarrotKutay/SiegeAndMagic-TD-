@@ -53,8 +53,5 @@ public class TestGrid : MonoBehaviour
         manager.SetComponentData(grid,
             new InitializeGridTag() { Value = true }
         );
-
-        // add buffer for nodes
-        manager.AddBuffer<NodeElement>(grid).ResizeUninitialized(GridGlobals.getGlobalGridHeight() * GridGlobals.getGlobalGridWidth());
     }
 }

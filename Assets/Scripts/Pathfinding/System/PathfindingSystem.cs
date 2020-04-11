@@ -1,59 +1,125 @@
 ﻿using Unity.Entities;
 using Unity.Jobs;
-using Unity.Collections;
 using Unity.Mathematics;
+using Unity.Collections;
 
 public class PathfindingSystem : SystemBase
 {
-    private EntityQueryDesc entityQueryDesc;
-    private EntityQuery entityQuery;
+    public const int MOVE_COST_STRAIGHT = 10;
+    public const int MOVE_COST_DIAGONAL = 14;
+    public const int MOVE_COST_VERTICAL = 0;
+
     private EndSimulationEntityCommandBufferSystem endSimulationEntityCommandBufferSystem;
 
     protected override void OnCreate()
     {
-        endSimulationEntityCommandBufferSystem = World.GetOrCreateSystem<EndSimulationEntityCommandBufferSystem>();
-
-        entityQueryDesc = new EntityQueryDesc();
-        entityQueryDesc.All = new ComponentType[] { typeof(PathfindingStart), typeof(PathfindingTarget), typeof(FindingPathTag) };
-
-        entityQuery = GetEntityQuery(entityQueryDesc);
+        endSimulationEntityCommandBufferSystem = World
+                .DefaultGameObjectInjectionWorld
+                .GetOrCreateSystem<EndSimulationEntityCommandBufferSystem>();
     }
 
     protected override void OnUpdate()
     {
-        var ECBConcurrent = endSimulationEntityCommandBufferSystem.CreateCommandBuffer().ToConcurrent();
+        // initialize grid globals values 
+        var gridWidth = GridGlobals.getGlobalGridWidth();
+        var gridHeight = GridGlobals.getGlobalGridHeight();
+        var gridCellSize = GridGlobals.getGlobalGridCellSize();
 
-        var nodesArray = GetEntityQuery(typeof(Node)).ToEntityArrayAsync(Allocator.TempJob, out JobHandle getNodesJob);
-        getNodesJob.Complete();
+        // initialize grid to calculate path
+        NativeArray<Entity> nodes = GetEntityQuery(typeof(Node)).ToEntityArrayAsync(Allocator.TempJob, out JobHandle getNodeEntities);
+        NativeArray<Entity> pathfinders = GetEntityQuery(typeof(PathfindingParameters))
+                                            .ToEntityArrayAsync(Allocator.TempJob, out JobHandle getPathfinderEntities);
+        JobHandle setup = JobHandle.CombineDependencies(getNodeEntities, getPathfinderEntities);
 
-        Entities.WithAll<PathfindingTarget, PathfindingStart, FindingPathTag>()
-                .ForEach((int entityInQueryIndex, in Entity entity) =>
-                {
-                    if (nodesArray.Length == GridGlobals.getGlobalGridHeight() * GridGlobals.getGlobalGridWidth())
-                    {
-                        float3 startPosition = GetComponent<PathfindingStart>(entity).Value;
-                        float3 targetPosition = GetComponent<PathfindingTarget>(entity).Value;
-                        GridData gridData = GetComponent<GridData>(entity);
+        FindPath findPathJob = new FindPath()
+        {
+            Pathfinders = pathfinders,
+            Grid = nodes
+        };
 
-                        Node startNode = GetComponent<Node>(
-                            nodesArray[GridGlobals.GetCellIndexFromWorldPosition(
-                                startPosition
-                            )]);
-                        Node targetNode = GetComponent<Node>(
-                            nodesArray[GridGlobals.GetCellIndexFromWorldPosition(
-                                targetPosition
-                            )]);
+        var findPathJobHandle = findPathJob.Schedule(pathfinders.Length, 1, setup);
 
-                        /* UnityEngine.Debug.Log("start: " + startNode.Position.Value.ToString());
-                        UnityEngine.Debug.Log("target: " + targetNode.Position.Value.ToString()); */
 
-                        ECBConcurrent.DestroyEntity(entityInQueryIndex, entity);
-                    }
+        Dependency = JobHandle.CombineDependencies(Dependency, findPathJobHandle);
+        this.CompleteDependency();
+    }
 
-                })
-                .WithDeallocateOnJobCompletion(nodesArray)
-                .ScheduleParallel();
+    public struct FindPath : IJobParallelFor
+    {
+        [DeallocateOnJobCompletion]
+        public NativeArray<Entity> Grid;
+        [DeallocateOnJobCompletion]
+        public NativeArray<Entity> Pathfinders;
+        public void Execute(int index)
+        {
+            //throw new System.NotImplementedException();
+        }
+    }
 
-        endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(this.Dependency);
+    public struct PathNode
+    {
+        ///<summary>
+        /// Index of this node. Functions as identifier
+        ///</summary>
+        public int Index;
+        ///<summary>
+        /// WorldPosition of this Node
+        ///</summary>
+        public float3 Position;
+        ///<summary>
+        /// Distance to start position of the path to find between 2 points
+        ///</summary>
+        public int GCost;
+        ///<summary>
+        /// Distance to target position of the path to find between 2 points
+        ///</summary>
+        public int HCost;
+        ///<summary>
+        /// Combined MoveCost needed for this node (GCost + HCost)
+        ///</summary>
+        public int FCost;
+        public bool Walkable;
+        ///<summary>
+        /// Cannot link directly between Value types (this node is a value type)
+        /// Therefore, we will use the index of each Node to link to its parent
+        ///</summary>
+        public int IndexOfParentNode;
+
+        public void CalculateFCost()
+        {
+            FCost = GCost + HCost;
+        }
+        ///<summary>
+        /// Measures the direct Distance between this <see cref="PathNode"/> and the <paramref name="targetNodePosition"/>
+        /// and calculates the Distance cost between them. Usefull to caluculate the
+        /// <see cref="GCost"/> and <see cref="HCost"/> of this Node
+        ///</summary>
+        public int CalculateDistanceCostTo(float3 targetNodePosition)
+        {
+            var longlineCost = (int)math.abs(Position.x - targetNodePosition.x) * MOVE_COST_STRAIGHT;
+            var diagonalCost = (int)math.abs(Position.z - targetNodePosition.z) * MOVE_COST_DIAGONAL;
+            var verticalCost = (int)math.abs(Position.y - targetNodePosition.y) * MOVE_COST_VERTICAL;
+
+            return longlineCost + diagonalCost + verticalCost;
+        }
+
+        public int GetNodeIndexFromWorldPosition(float3 Position, int width, int height, float cellSize)
+        {
+            int x = math.abs((int)(math.floor((Position.x + width / 2) / cellSize)));
+            int y = math.abs((int)(math.floor((Position.z + height / 2) / cellSize)));
+            return y * width + x;
+        }
+
+        ///<summary>
+        /// Resets Movement related values of this node back to initialization values
+        ///</summary>
+        public void cleanNode()
+        {
+            GCost = int.MaxValue;
+            HCost = int.MaxValue;
+            FCost = 0;
+            IndexOfParentNode = -1;
+        }
+
     }
 }

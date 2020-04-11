@@ -1,13 +1,14 @@
-﻿using Unity.Entities;
-using Unity.Collections;
+﻿using Unity.Collections;
+using Unity.Entities;
 using Unity.Mathematics;
 
 
-public struct PathfindingTarget : IComponentData
+public struct PathfindingParameters : IComponentData
 {
-    public float3 Value;
+    public float3 Start;
+    public float3 Target;
 }
-public struct PathfindingStart : IComponentData
+public struct CurrentPathNodeIndex : IComponentData
 {
-    public float3 Value;
+    public int Value;
 }

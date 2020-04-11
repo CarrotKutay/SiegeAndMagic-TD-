@@ -18,37 +18,23 @@ public class TestPathfinding : MonoBehaviour
         entityManager = World.DefaultGameObjectInjectionWorld.EntityManager;
 
         findPathArchetype = entityManager.CreateArchetype(
-            typeof(GridData),
-            typeof(PathfindingStart),
-            typeof(PathfindingTarget),
-            typeof(FindingPathTag)
+            typeof(PathfindingParameters),
+            typeof(CurrentPathNodeIndex)
         );
 
         Entity findPathEntity = entityManager.CreateEntity(findPathArchetype);
+        entityManager.SetName(findPathEntity, "PathfindingEntity");
         entityManager.SetComponentData(findPathEntity,
-            new GridData
+            new PathfindingParameters()
             {
-                CellSize = GridGlobals.getGlobalGridCellSize(),
-                Width = GridGlobals.getGlobalGridWidth(),
-                Height = GridGlobals.getGlobalGridHeight()
+                Start = startPosition,
+                Target = targetPosition
             }
         );
         entityManager.SetComponentData(findPathEntity,
-            new PathfindingStart
+            new CurrentPathNodeIndex()
             {
-                Value = new float3(startPosition)
-            }
-        );
-        entityManager.SetComponentData(findPathEntity,
-            new PathfindingTarget
-            {
-                Value = new float3(targetPosition)
-            }
-        );
-        entityManager.SetComponentData(findPathEntity,
-            new FindingPathTag
-            {
-                Value = true
+                Value = -1
             }
         );
     }
