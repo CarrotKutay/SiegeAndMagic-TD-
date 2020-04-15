@@ -166,8 +166,7 @@ public class PathfindingSystem : SystemBase
 
                 if (targetNode.Index == currentNodeIndex)
                 {
-                    UnityEngine.Debug.Log("Found Path to target node!");
-                    // reached target 
+                    //Found Path to target node!
                     break;
                 }
 
