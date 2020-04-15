@@ -253,6 +253,18 @@ public class PathfindingSystem : SystemBase
                 counter++;
             } */
 
+            var visualDebug = ecb_Concurrent.CreateEntity(1);
+            ecb_Concurrent.AddComponent<VisualDebugData>(2, visualDebug,
+                new VisualDebugData
+                {
+                    StartPosition = StartPosition,
+                    TargetPosition = TargetPosition
+                }
+            );
+
+            var pathBuffer = ecb_Concurrent.AddBuffer<PathElement>(3, visualDebug);
+            pathBuffer.CopyFrom(FinalPath);
+
             OpenList.Dispose();
             ClosedList.Dispose();
         }
