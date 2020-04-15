@@ -1,4 +1,4 @@
-# SiegeAndMagic-TD-
+# DungeonsAndMagic-TD-
 Game developed with Unity (using ECS with DOTS)
 
 ---
