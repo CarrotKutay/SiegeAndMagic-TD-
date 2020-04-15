@@ -1,7 +1,6 @@
 ﻿using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Transforms;
-using Unity.Collections;
 using UnityEngine;
 
 public class TestGrid : MonoBehaviour
@@ -10,8 +9,14 @@ public class TestGrid : MonoBehaviour
     private int testWidth = 50;
     [SerializeField]
     private int testHeight = 50;
+    [SerializeField]
+    private float testCellSize = 1;
     private EntityManager manager;
-    private EntityArchetype gridArchetype;
+
+    private void Awake()
+    {
+        GridGlobals.UpdateGridGlobals(testWidth, testHeight, testCellSize);
+    }
 
     // Start is called before the first frame update
     void Start()
@@ -25,33 +30,29 @@ public class TestGrid : MonoBehaviour
         manager.SetComponentData(grid,
             new Translation()
             {
-                Value = new float3(0, 0, 0)
+                Value = new float3(
+                    transform.position.x - GridGlobals.getGlobalGridWidth() / 2,
+                    transform.position.y,
+                    transform.position.z - GridGlobals.getGlobalGridHeight() / 2
+                )
             }
         );
         manager.SetComponentData(grid,
             new GridData()
             {
-                Width = testWidth,
-                Height = testHeight,
-                CellSize = 1
+                GridIndex = 0,
+                Width = GridGlobals.getGlobalGridWidth(),
+                Height = GridGlobals.getGlobalGridHeight(),
+                CellSize = GridGlobals.getGlobalGridCellSize()
             }
         );
-        manager.AddBuffer<CellData>(grid);
 
-        OnGridEntityCreated(grid);
-    }
-
-    private void OnGridEntityCreated(Entity grid)
-    {
-        for (int y = 0; y < testHeight; y++)
-        {
-            for (int x = 0; x < testWidth; x++)
-            {
-                manager.GetBuffer<CellData>(grid).Add(new CellData()
-                {
-                    Walkable = false
-                });
-            }
-        }
+        // initialize tags
+        manager.AddComponent(grid,
+            typeof(InitializeGridTag)
+        );
+        manager.SetComponentData(grid,
+            new InitializeGridTag() { Value = true }
+        );
     }
 }
