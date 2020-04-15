@@ -3,6 +3,7 @@ using Unity.Jobs;
 using Unity.Mathematics;
 using Unity.Collections;
 using Unity.Transforms;
+using System.Collections.Generic;
 
 public class PathfindingSystem : SystemBase
 {
@@ -36,6 +37,7 @@ public class PathfindingSystem : SystemBase
         var entityCommandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer().ToConcurrent();
         var entityManager = World.DefaultGameObjectInjectionWorld.EntityManager;
         var GetPathElementBuffer = GetBufferFromEntity<PathElement>();
+        var GetPathIndexComponent = GetComponentDataFromEntity<CurrentPathNodeIndex>();
 
         // initialize grid globals values 
         var gridWidth = GridGlobals.getGlobalGridWidth();
@@ -78,7 +80,6 @@ public class PathfindingSystem : SystemBase
                         nodeGrid.ReinterpretStore(node.Index, node);
                     }
                 }
-
                 entityCommandBuffer.RemoveComponent<InitializeGridTag>(entityInQueryIndex, entity);
 
             }).ScheduleParallel(getPathfinders);
@@ -92,23 +93,6 @@ public class PathfindingSystem : SystemBase
         test.Schedule(nodeGrid.Length, 1).Complete();
 
         Nodes = nodeGrid.ToArray();
-
-        /* var depAddBuffer = JobHandle.CombineDependencies(getPathfinders, gridCreationHandle);
-
-        var addFinalPathBuffer = Entities
-            .WithName("Adding_Buffer_FinalPath")
-            .WithAll<PathfindingParameters>()
-                .ForEach(
-                    (int entityInQueryIndex, in Entity entity) =>
-                    {
-                        entityCommandBuffer.AddBuffer<PathElement>(entityInQueryIndex, entity);
-                        var buffer = entityCommandBuffer.SetBuffer<PathElement>(entityInQueryIndex, entity);
-                        buffer.Capacity = (gridWidth * gridHeight);
-                    }
-                ).ScheduleParallel(depAddBuffer);
-        addFinalPathBuffer.Complete();
- */
-
 
         for (int i = 0; i < pathfindingObjects.Length; i++)
         {
@@ -126,14 +110,18 @@ public class PathfindingSystem : SystemBase
                 StartPosition = parameters.Start,
                 TargetPosition = parameters.Target,
                 GetBuffer = GetPathElementBuffer,
+                GetPathIndex = GetPathIndexComponent,
                 ecb_Concurrent = entityCommandBuffer
             };
 
             var job = findingPathJob.Schedule(Dependency);
             openPathFindJobs[i] = job;
             job.Complete();
-            entityManager.RemoveComponent<PathfindingParameters>(pathfindingObjects[i]);
 
+            entityManager.RemoveComponent<PathfindingParameters>(pathfindingObjects[i]);
+            entityManager.AddComponentData<PerformingMovement>(pathfindingObjects[i],
+                new PerformingMovement { Value = true }
+            );
         }
 
         CompleteDependency();
@@ -150,6 +138,7 @@ public class PathfindingSystem : SystemBase
         public float GridCellSize;
         public float3 StartPosition, TargetPosition;
         public BufferFromEntity<PathElement> GetBuffer;
+        public ComponentDataFromEntity<CurrentPathNodeIndex> GetPathIndex;
         public EntityCommandBuffer.Concurrent ecb_Concurrent;
 
         public void Execute()
@@ -234,6 +223,7 @@ public class PathfindingSystem : SystemBase
             }
 
             var FinalPath = ecb_Concurrent.AddBuffer<PathElement>(0, Pathfinder);
+            var pathIndex = GetPathIndex[Pathfinder];
             // create final path
             var iteratingNode = Grid[targetNode.Index];
 
@@ -245,25 +235,15 @@ public class PathfindingSystem : SystemBase
                 });
                 iteratingNode = Grid[iteratingNode.IndexOfParentNode];
             }
-
-            /* var counter = 0;
-            foreach (var element in FinalPath)
+            // add current Position as last node to start path from
+            FinalPath.Add(new PathElement
             {
-                UnityEngine.Debug.Log(counter + ": " + element.Position.ToString());
-                counter++;
-            } */
-
-            var visualDebug = ecb_Concurrent.CreateEntity(1);
-            ecb_Concurrent.AddComponent<VisualDebugData>(2, visualDebug,
-                new VisualDebugData
-                {
-                    StartPosition = StartPosition,
-                    TargetPosition = TargetPosition
-                }
-            );
-
-            var pathBuffer = ecb_Concurrent.AddBuffer<PathElement>(3, visualDebug);
-            pathBuffer.CopyFrom(FinalPath);
+                Position = StartPosition
+            });
+            //* The next node this obj needs to move towards is at length - 2
+            //* length - 1 is the starting position this obj are already standing on
+            pathIndex.Value = FinalPath.Length - 2;
+            ecb_Concurrent.SetComponent<CurrentPathNodeIndex>(1, Pathfinder, pathIndex);
 
             OpenList.Dispose();
             ClosedList.Dispose();

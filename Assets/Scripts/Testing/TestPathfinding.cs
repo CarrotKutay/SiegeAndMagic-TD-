@@ -15,6 +15,7 @@ public class TestPathfinding : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
+        transform.position = startPosition;
         entityManager = World.DefaultGameObjectInjectionWorld.EntityManager;
 
         findPathArchetype = entityManager.CreateArchetype(
@@ -34,7 +35,7 @@ public class TestPathfinding : MonoBehaviour
         entityManager.SetComponentData(findPathEntity,
             new CurrentPathNodeIndex()
             {
-                Value = -1
+                Value = 0
             }
         );
     }
