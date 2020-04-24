@@ -23,13 +23,8 @@ public class PathfindingSystem : SystemBase
 
     protected override void OnStartRunning()
     {
-        Nodes = new PathNode[GridGlobals.getGlobalGridWidth() * GridGlobals.getGlobalGridHeight()];
+        //Nodes = new PathNode[GridGlobals.getGlobalGridWidth() * GridGlobals.getGlobalGridHeight()];
     }
-
-    /* protected override void OnStopRunning()
-    {
-        if (Nodes.IsCreated) Nodes.Dispose();
-    } */
 
     protected override void OnUpdate()
     {
@@ -44,95 +39,53 @@ public class PathfindingSystem : SystemBase
         var gridHeight = GridGlobals.getGlobalGridHeight();
         var gridCellSize = GridGlobals.getGlobalGridCellSize();
 
-        NativeArray<PathNode> nodeGrid = new NativeArray<PathNode>(gridWidth * gridHeight, Allocator.TempJob);
-        nodeGrid.CopyFrom(Nodes);
-
         NativeArray<Entity> pathfindingObjects = GetEntityQuery(typeof(PathfindingParameters)).ToEntityArrayAsync(Allocator.TempJob, out JobHandle getPathfinders);
-        NativeArray<JobHandle> openPathFindJobs = new NativeArray<JobHandle>(pathfindingObjects.Length, Allocator.TempJob);
-
-        // perform action on all Entities that still need initialization and contain GridData
-        var gridCreationHandle = Entities
-            .WithAll<InitializeGridTag>()
-            .WithName("Grid_Initialization")
-            .ForEach(
-            (int entityInQueryIndex, in GridData data, in Translation Position, in Entity entity) =>
-            {
-                // get GridData and Position outside of For-Loops to save resources
-                float3 gridPosition = Position.Value;
-
-                // create Entities containing Nodes (node data)
-                for (int y = 0; y < data.Height; y++)
-                {
-                    for (int x = 0; x < data.Width; x++)
-                    {
-                        var node = new PathNode
-                        {
-                            IndexOfParentNode = -1,
-                            Position = gridPosition
-                                            + new float3(0, 0, data.CellSize * y)
-                                            + new float3(data.CellSize * x, 0, 0),
-                            GCost = int.MaxValue,
-                            HCost = 0,
-                            FCost = 0,
-                            Walkable = true,
-                            Index = y * data.Width + x
-                        };
-                        nodeGrid.ReinterpretStore(node.Index, node);
-                    }
-                }
-                entityCommandBuffer.RemoveComponent<InitializeGridTag>(entityInQueryIndex, entity);
-
-            }).ScheduleParallel(getPathfinders);
-        gridCreationHandle.Complete();
+        endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(getPathfinders);
+        getPathfinders.Complete();
 
         // grid testing
-        var test = new TestGrid_ParentNodeIndex
+        /* var test = new TestGrid_ParentNodeIndex
         {
             Nodes = nodeGrid
         };
-        test.Schedule(nodeGrid.Length, 1).Complete();
+        test.Schedule(nodeGrid.Length, 1).Complete(); */
 
-        Nodes = nodeGrid.ToArray();
-
-        for (int i = 0; i < pathfindingObjects.Length; i++)
+        if (Nodes != null && getPathfinders.IsCompleted)
         {
-
-            var parameters = GetComponent<PathfindingParameters>(pathfindingObjects[i]);
-            //var buffer = entityManager.GetBuffer<PathElement>(pathfindingObjects[i]);
-
-            var findingPathJob = new FindPath
+            for (int i = 0; i < pathfindingObjects.Length; i++)
             {
-                Pathfinder = pathfindingObjects[i],
-                Grid = nodeGrid,
-                GridCellSize = gridCellSize,
-                GridHeight = gridHeight,
-                GridWidth = gridWidth,
-                StartPosition = parameters.Start,
-                TargetPosition = parameters.Target,
-                GetBuffer = GetPathElementBuffer,
-                GetPathIndex = GetPathIndexComponent,
-                ecb_Concurrent = entityCommandBuffer
-            };
+                UnityEngine.Debug.Log("Performing Pathfinding");
+                var parameters = GetComponent<PathfindingParameters>(pathfindingObjects[i]);
+                //var buffer = entityManager.GetBuffer<PathElement>(pathfindingObjects[i]);
+                var NodeGrid = new NativeArray<PathNode>(Nodes, Allocator.TempJob);
 
-            var job = findingPathJob.Schedule(Dependency);
-            openPathFindJobs[i] = job;
-            job.Complete();
+                var findingPathJob = new FindPath
+                {
+                    Pathfinder = pathfindingObjects[i],
+                    Grid = NodeGrid,
+                    GridCellSize = gridCellSize,
+                    GridHeight = gridHeight,
+                    GridWidth = gridWidth,
+                    StartPosition = parameters.Start,
+                    TargetPosition = parameters.Target,
+                    GetBuffer = GetPathElementBuffer,
+                    GetPathIndex = GetPathIndexComponent,
+                    ecb_Concurrent = entityCommandBuffer
+                };
 
-            entityManager.RemoveComponent<PathfindingParameters>(pathfindingObjects[i]);
-            entityManager.AddComponentData<PerformingMovement>(pathfindingObjects[i],
-                new PerformingMovement { Value = true }
-            );
+                var job = findingPathJob.Schedule(Dependency);
+                endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(job);
+            }
         }
 
-        CompleteDependency();
-        openPathFindJobs.Dispose();
+        endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(Dependency);
         pathfindingObjects.Dispose();
-        nodeGrid.Dispose();
     }
 
     public struct FindPath : IJob
     {
         public Entity Pathfinder;
+        [DeallocateOnJobCompletion]
         public NativeArray<PathNode> Grid;
         public int GridWidth, GridHeight;
         public float GridCellSize;
@@ -243,6 +196,10 @@ public class PathfindingSystem : SystemBase
             //* length - 1 is the starting position this obj are already standing on
             pathIndex.Value = FinalPath.Length - 2;
             ecb_Concurrent.SetComponent<CurrentPathNodeIndex>(1, Pathfinder, pathIndex);
+            ecb_Concurrent.RemoveComponent<PathfindingParameters>(2, Pathfinder);
+            ecb_Concurrent.AddComponent<PerformingMovement>(3, Pathfinder,
+                new PerformingMovement { Value = true }
+            );
 
             OpenList.Dispose();
             ClosedList.Dispose();

@@ -8,6 +8,7 @@ public class FollowPathOrderSystem : SystemBase
 {
     private EndSimulationEntityCommandBufferSystem endSimulationEntityCommandBufferSystem;
     private EntityQueryDesc desc;
+    private NativeList<JobHandle> MoveJobs;
 
     protected override void OnCreate()
     {
@@ -19,66 +20,102 @@ public class FollowPathOrderSystem : SystemBase
             All = new ComponentType[] { typeof(PerformingMovement), typeof(PathElement) },
             None = new ComponentType[] { typeof(PathfindingParameters) }
         };
+        MoveJobs = new NativeList<JobHandle>(Allocator.Persistent);
+    }
+
+    protected override void OnDestroy()
+    {
+        MoveJobs.Dispose();
     }
 
     protected override void OnUpdate()
     {
+        var ecb_Concurrent = endSimulationEntityCommandBufferSystem.CreateCommandBuffer().ToConcurrent();
+        var getBuffer = GetBufferFromEntity<PathElement>();
+        var DeltaTime = Time.DeltaTime;
+
+        Entities.WithName("MovingObjects")
+            .WithAll<PerformingMovement, PathElement>()
+            .WithNone<PathfindingParameters>()
+            .ForEach(
+                (int entityInQueryIndex, ref Entity entity) =>
+                {
+                    var Position = GetComponent<Translation>(entity);
+                    var PathIndex = GetComponent<CurrentPathNodeIndex>(entity);
+                    var Buffer = getBuffer[entity];
+
+                    var reachedCurrentStep = math.distance(Position.Value,
+                        Buffer[PathIndex.Value].Position + new float3(0, Position.Value.y, 0)) < .1f; //! ignoring vertical distance for now
+                    if (reachedCurrentStep)
+                    {
+                        PathIndex.Value--;
+                        ecb_Concurrent.SetComponent<CurrentPathNodeIndex>(entityInQueryIndex, entity, PathIndex);
+                    };
+                    if (PathIndex.Value < 0) { ecb_Concurrent.RemoveComponent<PerformingMovement>(entityInQueryIndex, entity); }
+                    else
+                    {
+                        var nextStep = Buffer[PathIndex.Value].Position;
+                        var currentStep = Buffer[PathIndex.Value + 1].Position;
+                        var direction = math.normalizesafe(nextStep - currentStep);
+                        direction.y = 0; // ! negating any vertical movement for now
+                        Position.Value += direction * DeltaTime * 5; // 5 -> hardcoded movementspeed for testing
+                        ecb_Concurrent.SetComponent<Translation>(entityInQueryIndex, entity, Position);
+                    }
+                }
+            )
+            .WithNativeDisableParallelForRestriction(getBuffer)
+            .Schedule();
+    }
+
+    public void shutdown()
+    {
+        this.EntityManager.CompleteAllJobs();
+        this.CompleteDependency();
+        this.Enabled = false;
+    }
+
+    /* protected override void OnUpdate()
+    {
         var commandBufferConcurrent = endSimulationEntityCommandBufferSystem.CreateCommandBuffer().ToConcurrent();
         var deltaTime = Time.DeltaTime;
 
-        /* Entities.WithName("Movement")
-            .WithNone<VisualDebugData, PathfindingParameters>()
-            .WithAll<PerformingMovement>()
-            .ForEach(
-                (int entityInQueryIndex, ref Translation Position, in DynamicBuffer<PathElement> Buffer, in Entity entity) =>
-                {
-                    var Index = GetComponent<CurrentPathNodeIndex>(entity);
-                    var reachedCurrentStep = math.distance(Position.Value,
-                            Buffer[Index.Value].Position + new float3(0, Position.Value.y, 0)) < .2f; //! ignoring vertical distance for now
-                    if (reachedCurrentStep)
-                    {
-                        Index.Value -= 1;
-                        UnityEngine.Debug.Log(Index.Value.ToString());
-                    };
-                    if (reachedCurrentStep && Index.Value < 0)
-                    {
-                        commandBufferConcurrent.RemoveComponent<PerformingMovement>(entityInQueryIndex, entity);
-                    }
-                    else
-                    {
-                        var nextStep = Buffer[Index.Value].Position;
-                        var direction = math.normalizesafe(nextStep - Position.Value);
-                        direction.y = 0; // ! negating any vertical movement for now
-                        Position.Value += direction * deltaTime * 5; // 5 -> hardcoded movementspeed for testing
-                    }
-                }
-            ).ScheduleParallel(); */
-
         var movingObjects = GetEntityQuery(desc).ToEntityArrayAsync(Allocator.TempJob, out JobHandle getMovingObjects);
+        endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(getMovingObjects);
         getMovingObjects.Complete();
+
+        for (int i = 0; i < MoveJobs.Length; i++)
+        {
+            if (MoveJobs[i].IsCompleted) MoveJobs.RemoveAtSwapBack(i);
+        }
 
         var GetPathElementBuffer = GetBufferFromEntity<PathElement>();
         var GetPosition = GetComponentDataFromEntity<Translation>();
         var GetPathIndex = GetComponentDataFromEntity<CurrentPathNodeIndex>();
 
-        var moveJob = new MoveJob()
+        for (int i = 0; i < movingObjects.Length; i++)
         {
-            Entities = movingObjects,
-            ecb_Concurrent = commandBufferConcurrent,
-            GetPosition = GetPosition,
-            GetPathIndex = GetPathIndex,
-            GetBuffer = GetPathElementBuffer,
-            DeltaTime = deltaTime
-        };
+            var moveJob = new MoveJob()
+            {
+                movingEntity = movingObjects[i],
+                ecb_Concurrent = commandBufferConcurrent,
+                GetPosition = GetPosition,
+                GetPathIndex = GetPathIndex,
+                GetBuffer = GetPathElementBuffer,
+                DeltaTime = deltaTime
+            };
 
-        var handel = moveJob.Schedule(movingObjects.Length, 1, Dependency);
-        handel.Complete();
+            JobHandle.CompleteAll(MoveJobs);
+            var moveJobDeps = JobHandle.CombineDependencies(MoveJobs);
+            var handel = moveJob.Schedule(moveJobDeps);
+            MoveJobs.Add(handel);
+            endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(handel);
+        }
     }
 
-    struct MoveJob : IJobParallelFor
+    struct MoveJob : IJob
     {
         [DeallocateOnJobCompletion]
-        public NativeArray<Entity> Entities;
+        public Entity movingEntity;
         public EntityCommandBuffer.Concurrent ecb_Concurrent;
         [NativeDisableParallelForRestriction]
         public ComponentDataFromEntity<Translation> GetPosition;
@@ -87,24 +124,21 @@ public class FollowPathOrderSystem : SystemBase
         [NativeDisableParallelForRestriction]
         public BufferFromEntity<PathElement> GetBuffer;
         public float DeltaTime;
-        public void Execute(int index)
+        public void Execute()
         {
-            var movingEntity = Entities[index];
+            //var movingEntity = Entities[index];
             var Position = GetPosition[movingEntity];
             var PathIndex = GetPathIndex[movingEntity];
             var Buffer = GetBuffer[movingEntity];
 
             var reachedCurrentStep = math.distance(Position.Value,
-                            Buffer[PathIndex.Value].Position + new float3(0, Position.Value.y, 0)) < .1f; //! ignoring vertical distance for now
+                Buffer[PathIndex.Value].Position + new float3(0, Position.Value.y, 0)) < .1f; //! ignoring vertical distance for now
             if (reachedCurrentStep)
             {
                 PathIndex.Value--;
-                ecb_Concurrent.SetComponent<CurrentPathNodeIndex>(index, movingEntity, PathIndex);
+                ecb_Concurrent.SetComponent<CurrentPathNodeIndex>(0, movingEntity, PathIndex);
             };
-            if (reachedCurrentStep && PathIndex.Value < 0)
-            {
-                ecb_Concurrent.RemoveComponent<PerformingMovement>(index, movingEntity);
-            }
+            if (PathIndex.Value < 0) { ecb_Concurrent.RemoveComponent<PerformingMovement>(1, movingEntity); }
             else
             {
                 var nextStep = Buffer[PathIndex.Value].Position;
@@ -112,8 +146,9 @@ public class FollowPathOrderSystem : SystemBase
                 var direction = math.normalizesafe(nextStep - currentStep);
                 direction.y = 0; // ! negating any vertical movement for now
                 Position.Value += direction * DeltaTime * 5; // 5 -> hardcoded movementspeed for testing
-                ecb_Concurrent.SetComponent<Translation>(index, movingEntity, Position);
+                ecb_Concurrent.SetComponent<Translation>(2, movingEntity, Position);
             }
+
         }
-    }
+    } */
 }

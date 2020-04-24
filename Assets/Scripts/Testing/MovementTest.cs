@@ -28,7 +28,8 @@ public class MovementTest : MonoBehaviour
             typeof(RenderBounds),
             typeof(LocalToWorld),
             typeof(PathfindingParameters),
-            typeof(CurrentPathNodeIndex)
+            typeof(CurrentPathNodeIndex),
+            typeof(UserTag)
         );
 
         createTestUnit();
@@ -64,5 +65,10 @@ public class MovementTest : MonoBehaviour
                 Value = startPosition
             }
         );
+        manager.SetComponentData(testUnit,
+            new UserTag
+            {
+                Value = true
+            });
     }
 }

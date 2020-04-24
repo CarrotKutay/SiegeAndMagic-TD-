@@ -10,15 +10,19 @@ public class PathfindingVisualDebugSystem : SystemBase
 {
     private EntityQueryDesc desc;
     private EntityManager manager;
-    private DebugPathView VisualDebugObj;
     private float TimeForNextUpdate = 0;
+    private EndSimulationEntityCommandBufferSystem endSimulationEntityCommandBufferSystem;
 
     protected override void OnCreate()
     {
+        endSimulationEntityCommandBufferSystem = World
+            .DefaultGameObjectInjectionWorld
+            .GetOrCreateSystem<EndSimulationEntityCommandBufferSystem>();
         manager = World.DefaultGameObjectInjectionWorld.EntityManager;
         desc = new EntityQueryDesc
         {
-            All = new ComponentType[] { typeof(PerformingMovement), typeof(PathElement) }
+            All = new ComponentType[] { typeof(PerformingMovement), typeof(PathElement) },
+            None = new ComponentType[] { typeof(PathfindingParameters) }
         };
     }
 
@@ -27,43 +31,40 @@ public class PathfindingVisualDebugSystem : SystemBase
         if (Time.ElapsedTime > TimeForNextUpdate)
         {
             TimeForNextUpdate += Time.DeltaTime;
-            var pathParams = GetEntityQuery(desc)
+            var Paths = GetEntityQuery(desc)
                     .ToEntityArrayAsync(Allocator.TempJob, out JobHandle getPathParams);
+
             getPathParams.Complete();
 
-            foreach (var pathEntity in pathParams)
+
+            for (int index = 0; index < Paths.Length; index++)
             {
-                createPathDebugObjects(pathEntity);
+                var currentPathIndex = GetComponent<CurrentPathNodeIndex>(Paths[index]).Value;
+                if (currentPathIndex > 0)
+                {
+                    var Position = GetComponent<Translation>(Paths[index]);
+                    var pathBuffer = manager.GetBuffer<PathElement>(Paths[index]);
+                    var float3Buffer = pathBuffer.Reinterpret<float3>();
+                    if (float3Buffer.Length > 0)
+                    {
+                        var debugObj = new DebugPathView
+                        {
+                            Start = Position.Value
+                        };
+                        var tempList = new List<float3>(float3Buffer.ToNativeArray(Allocator.Temp).ToArray());
+                        debugObj.Path = tempList.GetRange(0, currentPathIndex);
+                        debugObj.Target = debugObj.Path[0];
+
+                        DebugDrawPathData(
+                            debugObj.Start,
+                            debugObj.Target,
+                            debugObj.Path
+                        );
+                    }
+                }
             }
 
-            pathParams.Dispose();
-        }
-    }
-
-    private void createPathDebugObjects(Entity pathObj)
-    {
-        var getPathFromEntity = GetBufferFromEntity<PathElement>();
-        var currentPathIndex = GetComponent<CurrentPathNodeIndex>(pathObj).Value;
-
-        if (currentPathIndex > 0)
-        {
-            var Position = GetComponent<Translation>(pathObj);
-            var pathBuffer = getPathFromEntity[pathObj];
-            var float3Buffer = pathBuffer.Reinterpret<float3>();
-
-            VisualDebugObj = new DebugPathView
-            {
-                Start = Position.Value
-            };
-            var tempList = new List<float3>(float3Buffer.ToNativeArray(Allocator.Temp).ToArray());
-            VisualDebugObj.Path = tempList.GetRange(0, currentPathIndex);
-            VisualDebugObj.Target = VisualDebugObj.Path[0];
-
-            DebugDrawPathData(
-                VisualDebugObj.Start,
-                VisualDebugObj.Target,
-                VisualDebugObj.Path
-            );
+            Paths.Dispose();
         }
     }
 
@@ -107,6 +108,56 @@ public class PathfindingVisualDebugSystem : SystemBase
         //bottom left corner (back)
         Debug.DrawLine(Center - half_SL_Direction, Center + new float3(-halfSideLength, halfSideLength, halfSideLength), color, Duration);
 
+    }
+
+    public struct DebugPathJob : IJob
+    {
+        [DeallocateOnJobCompletion]
+        public NativeArray<Entity> Paths;
+        [NativeDisableParallelForRestriction]
+        public BufferFromEntity<PathElement> GetPathBuffer;
+        [NativeDisableParallelForRestriction]
+        public ComponentDataFromEntity<CurrentPathNodeIndex> GetPathIndex;
+        [NativeDisableParallelForRestriction]
+        public ComponentDataFromEntity<Translation> GetPosition;
+        public float DeltaTime;
+
+        public void Execute()
+        {
+            for (int index = 0; index < Paths.Length; index++)
+            {
+                var currentPathIndex = GetPathIndex[Paths[index]].Value;
+                if (currentPathIndex > 0)
+                {
+                    var Position = GetPosition[Paths[index]];
+                    var pathBuffer = GetPathBuffer[Paths[index]];
+                    var float3Buffer = pathBuffer.Reinterpret<float3>();
+
+                    var debugObj = new DebugPathView
+                    {
+                        Start = Position.Value
+                    };
+                    var tempList = new List<float3>(float3Buffer.ToNativeArray(Allocator.Temp).ToArray());
+                    debugObj.Path = tempList.GetRange(0, currentPathIndex);
+                    debugObj.Target = debugObj.Path[0];
+
+                    /* DebugDrawPathData(
+                        debugObj.Start,
+                        debugObj.Target,
+                        debugObj.Path
+                    ); */
+                }
+            }
+        }
+
+
+    }
+
+    public void shutdown()
+    {
+        this.EntityManager.CompleteAllJobs();
+        endSimulationEntityCommandBufferSystem.Enabled = false;
+        this.Enabled = false;
     }
 }
 
