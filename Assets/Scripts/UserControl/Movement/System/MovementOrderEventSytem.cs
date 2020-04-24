@@ -7,6 +7,7 @@ using UnityEngine;
 // running player controls over a system might be stupid as there will always only be one player be controller by one person playing
 // therefore new approach through monobehaviour might be better
 // also as monobehaviour will always be performing on main thread, controls will always be more responsive
+[DisableAutoCreation]
 public class MovementOrderEventSytem : SystemBase
 {
     public Event OnMovementOrderCreated;

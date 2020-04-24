@@ -18,7 +18,7 @@ public class MovementTest : MonoBehaviour
     private Material testMaterial;
 
     // Start is called before the first frame update
-    void Start()
+    private void Awake()
     {
         manager = World.DefaultGameObjectInjectionWorld.EntityManager;
         unitArchetype = manager.CreateArchetype(
