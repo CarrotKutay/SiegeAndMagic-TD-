@@ -39,14 +39,6 @@ public class MovementOrderEventSytem : SystemBase
             {
                 var manager = World.DefaultGameObjectInjectionWorld.EntityManager;
 
-                // shutdown debug + movement system before initializing new movement as they are reading from old movement
-                /* var debugSystem = World.GetOrCreateSystem<PathfindingVisualDebugSystem>();
-                var movingSystem = World.GetOrCreateSystem<FollowPathOrderSystem>();
-                var system = World.GetOrCreateSystem<EndFrameTRSToLocalToWorldSystem>();
-                system.EntityManager.CompleteAllJobs();
-                movingSystem.shutdown();
-                debugSystem.shutdown(); */
-
                 // add new movement
                 JobHandle handle = Entities.WithName("UserMovementControl")
                     .WithAll<UserTag>()
@@ -77,7 +69,8 @@ public class MovementOrderEventSytem : SystemBase
                                 );
                             }
                         }
-                ).Schedule(Dependency);
+                ).ScheduleParallel(Dependency);
+                Dependency = JobHandle.CombineDependencies(Dependency, handle);
 
                 endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(handle);
             }

@@ -4,9 +4,18 @@ using Unity.Mathematics;
 using Unity.Jobs;
 using Unity.Transforms;
 
+[UpdateInGroup(typeof(InitializationSystemGroup))]
 public class GridSystem : SystemBase
 {
+    private int gridHeight;
+    private float gridCellSize;
+
     private EndSimulationEntityCommandBufferSystem endSimulationEntityCommandBufferSystem;
+    private int gridWidth;
+
+    public float GridCellSize { get => gridCellSize; set => gridCellSize = value; }
+    public int GridWidth { get => gridWidth; set => gridWidth = value; }
+    public int GridHeight { get => gridHeight; set => gridHeight = value; }
 
     protected override void OnCreate()
     {
@@ -20,10 +29,11 @@ public class GridSystem : SystemBase
         var entityCommandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer().ToConcurrent();
 
         // initialize grid globals values 
-        var gridWidth = GridGlobals.getGlobalGridWidth();
-        var gridHeight = GridGlobals.getGlobalGridHeight();
+        GridWidth = GridGlobals.getGlobalGridWidth();
+        GridHeight = GridGlobals.getGlobalGridHeight();
+        GridCellSize = GridGlobals.getGlobalGridCellSize();
 
-        NativeArray<PathfindingSystem.PathNode> nodeGrid = new NativeArray<PathfindingSystem.PathNode>(gridWidth * gridHeight, Allocator.TempJob);
+        NativeArray<PathfindingSystem.PathNode> nodeGrid = new NativeArray<PathfindingSystem.PathNode>(GridWidth * GridHeight, Allocator.TempJob);
 
         // perform action on all Entities that still need initialization and contain GridData
         var gridCreationHandle = Entities
@@ -60,8 +70,11 @@ public class GridSystem : SystemBase
             }).ScheduleParallel(Dependency);
         gridCreationHandle.Complete();
 
-        World.DefaultGameObjectInjectionWorld.GetOrCreateSystem<PathfindingSystem>().Nodes = new PathfindingSystem.PathNode[gridWidth * gridHeight];
-        nodeGrid.ToArray().CopyTo(World.DefaultGameObjectInjectionWorld.GetOrCreateSystem<PathfindingSystem>().Nodes, 0);
+        var pathfinding = World.DefaultGameObjectInjectionWorld.GetOrCreateSystem<PathfindingSystem>();
+        pathfinding.Nodes = new PathfindingSystem.PathNode[GridWidth * GridHeight];
+        nodeGrid.ToArray().CopyTo(pathfinding.Nodes, 0);
+
+
         nodeGrid.Dispose();
     }
 }

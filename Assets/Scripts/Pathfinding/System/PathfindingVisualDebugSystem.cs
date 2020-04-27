@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Unity.Mathematics;
 using Unity.Transforms;
 
+[DisableAutoCreation]
 public class PathfindingVisualDebugSystem : SystemBase
 {
     private EntityQueryDesc desc;
@@ -156,8 +157,11 @@ public class PathfindingVisualDebugSystem : SystemBase
     public void shutdown()
     {
         this.EntityManager.CompleteAllJobs();
-        endSimulationEntityCommandBufferSystem.Enabled = false;
-        this.Enabled = false;
+    }
+
+    protected override void OnDestroy()
+    {
+        shutdown();
     }
 }
 

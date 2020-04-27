@@ -34,7 +34,7 @@ public class FollowPathOrderSystem : SystemBase
         var getBuffer = GetBufferFromEntity<PathElement>();
         var DeltaTime = Time.DeltaTime;
 
-        Entities.WithName("MovingObjects")
+        var handle = Entities.WithName("MovingObjects")
             .WithAll<PerformingMovement, PathElement>()
             .WithNone<PathfindingParameters>()
             .ForEach(
@@ -64,7 +64,9 @@ public class FollowPathOrderSystem : SystemBase
                 }
             )
             .WithNativeDisableParallelForRestriction(getBuffer)
-            .Schedule();
+            .ScheduleParallel(Dependency);
+
+        handle.Complete();
     }
 
     public void shutdown()

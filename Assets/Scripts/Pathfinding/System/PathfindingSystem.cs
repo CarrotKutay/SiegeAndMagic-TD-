@@ -4,7 +4,7 @@ using Unity.Mathematics;
 using Unity.Collections;
 using Unity.Transforms;
 using System.Collections.Generic;
-
+[UpdateInGroup(typeof(SimulationSystemGroup))]
 public class PathfindingSystem : SystemBase
 {
     public const int MOVE_COST_STRAIGHT = 10;
@@ -21,87 +21,77 @@ public class PathfindingSystem : SystemBase
                 .GetOrCreateSystem<EndSimulationEntityCommandBufferSystem>();
     }
 
-    protected override void OnStartRunning()
-    {
-        //Nodes = new PathNode[GridGlobals.getGlobalGridWidth() * GridGlobals.getGlobalGridHeight()];
-    }
-
     protected override void OnUpdate()
     {
         // get entityCommandBuffer.ToConcurrent()
         var entityCommandBuffer = endSimulationEntityCommandBufferSystem.CreateCommandBuffer().ToConcurrent();
-        var entityManager = World.DefaultGameObjectInjectionWorld.EntityManager;
         var GetPathElementBuffer = GetBufferFromEntity<PathElement>();
         var GetPathIndexComponent = GetComponentDataFromEntity<CurrentPathNodeIndex>();
 
-        // initialize grid globals values 
-        var gridWidth = GridGlobals.getGlobalGridWidth();
-        var gridHeight = GridGlobals.getGlobalGridHeight();
-        var gridCellSize = GridGlobals.getGlobalGridCellSize();
+        // initialize grid values
+        var gridSystem = World.DefaultGameObjectInjectionWorld.GetExistingSystem<GridSystem>();
+        var gridWidth = gridSystem.GridWidth;
+        var gridHeight = gridSystem.GridHeight;
+        var gridCellSize = gridSystem.GridCellSize;
 
-        NativeArray<Entity> pathfindingObjects = GetEntityQuery(typeof(PathfindingParameters)).ToEntityArrayAsync(Allocator.TempJob, out JobHandle getPathfinders);
-        endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(getPathfinders);
-        getPathfinders.Complete();
 
-        // grid testing
-        /* var test = new TestGrid_ParentNodeIndex
+        if (Nodes != null)
         {
-            Nodes = nodeGrid
-        };
-        test.Schedule(nodeGrid.Length, 1).Complete(); */
 
-        if (Nodes != null && getPathfinders.IsCompleted)
-        {
-            for (int i = 0; i < pathfindingObjects.Length; i++)
+            UnityEngine.Debug.Log("Performing Pathfinding");
+            var getParameters = GetComponentDataFromEntity<PathfindingParameters>();
+            var NodeGrid = new NativeArray<PathNode>(Nodes, Allocator.TempJob);
+
+            NativeArray<Entity> pathfindingObjects = GetEntityQuery(typeof(PathfindingParameters))
+                .ToEntityArrayAsync(Allocator.TempJob, out JobHandle getPathfinders);
+
+            var findingPathJob = new FindPath
             {
-                UnityEngine.Debug.Log("Performing Pathfinding");
-                var parameters = GetComponent<PathfindingParameters>(pathfindingObjects[i]);
-                //var buffer = entityManager.GetBuffer<PathElement>(pathfindingObjects[i]);
-                var NodeGrid = new NativeArray<PathNode>(Nodes, Allocator.TempJob);
+                Pathfinders = pathfindingObjects,
+                Grid = NodeGrid,
+                GridCellSize = gridCellSize,
+                GridHeight = gridHeight,
+                GridWidth = gridWidth,
+                GetPathParams = getParameters,
+                GetBuffer = GetPathElementBuffer,
+                GetPathIndex = GetPathIndexComponent,
+                ecb_Concurrent = entityCommandBuffer
+            };
 
-                var findingPathJob = new FindPath
-                {
-                    Pathfinder = pathfindingObjects[i],
-                    Grid = NodeGrid,
-                    GridCellSize = gridCellSize,
-                    GridHeight = gridHeight,
-                    GridWidth = gridWidth,
-                    StartPosition = parameters.Start,
-                    TargetPosition = parameters.Target,
-                    GetBuffer = GetPathElementBuffer,
-                    GetPathIndex = GetPathIndexComponent,
-                    ecb_Concurrent = entityCommandBuffer
-                };
+            var job = findingPathJob.Schedule(pathfindingObjects.Length, 1, getPathfinders);
+            endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(job);
 
-                var job = findingPathJob.Schedule(Dependency);
-                endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(job);
-            }
         }
-
-        endSimulationEntityCommandBufferSystem.AddJobHandleForProducer(Dependency);
-        pathfindingObjects.Dispose();
     }
 
-    public struct FindPath : IJob
+    public struct FindPath : IJobParallelFor
     {
-        public Entity Pathfinder;
         [DeallocateOnJobCompletion]
+        public NativeArray<Entity> Pathfinders;
+        [DeallocateOnJobCompletion]
+        [NativeDisableParallelForRestriction]
         public NativeArray<PathNode> Grid;
         public int GridWidth, GridHeight;
         public float GridCellSize;
-        public float3 StartPosition, TargetPosition;
+        //public float3 StartPosition, TargetPosition;
+        [NativeDisableParallelForRestriction]
+        public ComponentDataFromEntity<PathfindingParameters> GetPathParams;
+        [NativeDisableParallelForRestriction]
         public BufferFromEntity<PathElement> GetBuffer;
+        [NativeDisableParallelForRestriction]
         public ComponentDataFromEntity<CurrentPathNodeIndex> GetPathIndex;
         public EntityCommandBuffer.Concurrent ecb_Concurrent;
 
-        public void Execute()
+        public void Execute(int index)
         {
             //lists to valuate nodes 
             var OpenList = new NativeList<int>(Allocator.Temp);
             var ClosedList = new NativeList<int>(Allocator.Temp);
 
-            var startNode = Grid[GetNodeIndexFromWorldPosition(StartPosition, GridWidth, GridHeight, GridCellSize)];
-            var targetNode = Grid[GetNodeIndexFromWorldPosition(TargetPosition, GridWidth, GridHeight, GridCellSize)];
+            var parameters = GetPathParams[Pathfinders[index]];
+
+            var startNode = Grid[GetNodeIndexFromWorldPosition(parameters.Start, GridWidth, GridHeight, GridCellSize)];
+            var targetNode = Grid[GetNodeIndexFromWorldPosition(parameters.Target, GridWidth, GridHeight, GridCellSize)];
 
             startNode.GCost = 0;
             startNode.HCost = startNode.CalculateDistanceCostTo(targetNode.Position);
@@ -156,12 +146,12 @@ public class PathfindingSystem : SystemBase
                         if (possibleNodeToEvaluate)
                         {
                             // evaluate node setting up G, H and FCost
-                            var tentativeGCost = currentNode.GCost + neighboringNode.CalculateDistanceCostTo(StartPosition);
+                            var tentativeGCost = currentNode.GCost + neighboringNode.CalculateDistanceCostTo(parameters.Start);
                             if (tentativeGCost < neighboringNode.GCost)
                             {
                                 neighboringNode.IndexOfParentNode = currentNodeIndex;
                                 neighboringNode.GCost = tentativeGCost;
-                                neighboringNode.HCost = neighboringNode.CalculateDistanceCostTo(TargetPosition);
+                                neighboringNode.HCost = neighboringNode.CalculateDistanceCostTo(parameters.Target);
                                 neighboringNode.CalculateFCost();
 
                                 Grid.ReinterpretStore(neighboringNode.Index, neighboringNode);
@@ -174,8 +164,8 @@ public class PathfindingSystem : SystemBase
                 }
             }
 
-            var FinalPath = ecb_Concurrent.AddBuffer<PathElement>(0, Pathfinder);
-            var pathIndex = GetPathIndex[Pathfinder];
+            var FinalPath = ecb_Concurrent.AddBuffer<PathElement>(index, Pathfinders[index]);
+            var pathIndex = GetPathIndex[Pathfinders[index]];
             // create final path
             var iteratingNode = Grid[targetNode.Index];
 
@@ -190,14 +180,14 @@ public class PathfindingSystem : SystemBase
             // add current Position as last node to start path from
             FinalPath.Add(new PathElement
             {
-                Position = StartPosition
+                Position = parameters.Start
             });
             //* The next node this obj needs to move towards is at length - 2
             //* length - 1 is the starting position this obj are already standing on
             pathIndex.Value = FinalPath.Length - 2;
-            ecb_Concurrent.SetComponent<CurrentPathNodeIndex>(1, Pathfinder, pathIndex);
-            ecb_Concurrent.RemoveComponent<PathfindingParameters>(2, Pathfinder);
-            ecb_Concurrent.AddComponent<PerformingMovement>(3, Pathfinder,
+            ecb_Concurrent.SetComponent<CurrentPathNodeIndex>(index, Pathfinders[index], pathIndex);
+            ecb_Concurrent.RemoveComponent<PathfindingParameters>(index, Pathfinders[index]);
+            ecb_Concurrent.AddComponent<PerformingMovement>(index, Pathfinders[index],
                 new PerformingMovement { Value = true }
             );
 
