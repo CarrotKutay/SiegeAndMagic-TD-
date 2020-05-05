@@ -42,7 +42,7 @@ public class UserMovementControls : MonoBehaviour
     private void Update()
     {
         MovementOrder = Input.GetMouseButtonUp(0); // movement order keyed to left mouse button released -> hardcoded for now
-        if (MovementOrder)
+        if (MovementOrder && User != null)
         {
             // get current mouse position
             Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);

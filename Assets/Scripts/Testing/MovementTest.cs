@@ -2,6 +2,7 @@
 using Unity.Mathematics;
 using Unity.Rendering;
 using Unity.Transforms;
+using Unity.Physics;
 using UnityEngine;
 
 public class MovementTest : MonoBehaviour
@@ -13,9 +14,9 @@ public class MovementTest : MonoBehaviour
     [SerializeField]
     private float3 targetPosition;
     [SerializeField]
-    private Mesh testMesh;
+    private UnityEngine.Mesh testMesh;
     [SerializeField]
-    private Material testMaterial;
+    private UnityEngine.Material testMaterial;
 
     // Start is called before the first frame update
     private void Awake()

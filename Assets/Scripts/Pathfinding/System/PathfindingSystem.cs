@@ -37,8 +37,6 @@ public class PathfindingSystem : SystemBase
 
         if (Nodes != null)
         {
-
-            UnityEngine.Debug.Log("Performing Pathfinding");
             var getParameters = GetComponentDataFromEntity<PathfindingParameters>();
             var NodeGrid = new NativeArray<PathNode>(Nodes, Allocator.TempJob);
 
